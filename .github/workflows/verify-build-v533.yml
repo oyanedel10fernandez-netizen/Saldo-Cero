@@ -23,7 +23,7 @@ jobs:
           test -f saldo_cero_v533_android_release.zip
           rm -rf v533
           mkdir -p v533
-          unzip -q saldo_cero_v533_android_compile.zip -d v53
+          unzip -q saldo_cero_v533_android_compile.zip -d v533
 
       - name: Locate project
         shell: bash
@@ -66,7 +66,7 @@ jobs:
 
           mkdir -p ../artifacts
 
-          echo "BACKEND_V53=PASS" | tee ../artifacts/backend-pass-v533.txt
+          echo "BACKEND_V533=PASS" | tee ../artifacts/backend-pass-v533.txt
 
       - uses: actions/upload-artifact@v4
         with:
