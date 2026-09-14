@@ -1,0 +1,149 @@
+name: V49 Verify Backend and Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend V49
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract V49
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f saldo_cero_v49_build_evidence.zip
+          rm -rf v49
+          mkdir -p v49
+          unzip -q saldo_cero_v49_build_evidence.zip -d v49
+
+      - name: Locate project
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT_ROOT="$(find v49 -type f -name 'V49_STATUS.md' -print -quit | xargs -r dirname)"
+          test -n "$PROJECT_ROOT"
+          test -d "$PROJECT_ROOT/backend"
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+          echo "Project root: $PROJECT_ROOT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Backend install
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Backend build
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm run build
+
+      - name: Backend verification
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm run verify:v49
+
+      - name: Backend evidence
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: |
+          set -euo pipefail
+          test -f dist/server.js
+          mkdir -p ../artifacts
+          {
+            echo "BACKEND_BUILD=PASS"
+            echo "BACKEND_VERIFICATION=PASS"
+            echo "DIST=PASS"
+          } | tee ../artifacts/backend-pass-v49.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-pass-evidence-v49
+          path: ${{ env.PROJECT_ROOT }}/artifacts/backend-pass-v49.txt
+          if-no-files-found: error
+
+  android:
+    name: Android V49 APK + AAB
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract V49
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f saldo_cero_v49_build_evidence.zip
+          rm -rf v49
+          mkdir -p v49
+          unzip -q saldo_cero_v49_build_evidence.zip -d v49
+
+      - name: Locate project
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT_ROOT="$(find v49 -type f -name 'V49_STATUS.md' -print -quit | xargs -r dirname)"
+          test -n "$PROJECT_ROOT"
+          test -d "$PROJECT_ROOT/android"
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+          echo "Project root: $PROJECT_ROOT"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Android debug build
+        working-directory: ${{ env.PROJECT_ROOT }}/android
+        run: gradle --no-daemon clean assembleDebug
+
+      - name: Android release AAB build
+        working-directory: ${{ env.PROJECT_ROOT }}/android
+        run: gradle --no-daemon bundleRelease
+
+      - name: Find and verify APK + AAB
+        working-directory: ${{ env.PROJECT_ROOT }}/android
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APK="$(find app/build/outputs -type f -name '*.apk' | head -1)"
+          AAB="$(find app/build/outputs -type f -name '*.aab' | head -1)"
+
+          test -n "$APK"
+          test -n "$AAB"
+
+          mkdir -p artifacts
+
+          cp "$APK" artifacts/
+          cp "$AAB" artifacts/
+
+          {
+            echo "APK=$(basename "$APK")"
+            sha256sum "$APK"
+            echo "AAB=$(basename "$AAB")"
+            sha256sum "$AAB"
+            echo "APK_BUILD=PASS"
+            echo "AAB_BUILD=PASS"
+          } | tee artifacts/release-evidence.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: saldo-cero-v49-android
+          path: |
+            ${{ env.PROJECT_ROOT }}/android/artifacts/*.apk
+            ${{ env.PROJECT_ROOT }}/android/artifacts/*.aab
+            ${{ env.PROJECT_ROOT }}/android/artifacts/release-evidence.txt
+          if-no-files-found: error
