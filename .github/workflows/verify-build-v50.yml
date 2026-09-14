@@ -1,0 +1,151 @@
+name: V50 Verify Backend and Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend V50
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract V50
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f saldo_cero_v50_build_evidence.zip
+          rm -rf v50
+          mkdir -p v50
+          unzip -q saldo_cero_v50_build_evidence.zip -d v50
+
+      - name: Locate project
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATUS_FILE="$(find v50 -type f -name 'V50_STATUS.md' -print -quit)"
+          test -n "$STATUS_FILE"
+          PROJECT_ROOT="$(dirname "$STATUS_FILE")"
+          test -d "$PROJECT_ROOT/backend"
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+          echo "Project root: $PROJECT_ROOT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Backend install
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Backend build
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm run build
+
+      - name: Backend verification
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm run verify:v50
+
+      - name: Backend evidence
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/server.js
+          mkdir -p ../artifacts
+          {
+            echo "V50_BACKEND_BUILD=PASS"
+            echo "V50_BACKEND_VERIFICATION=PASS"
+            echo "DIST_SERVER=PASS"
+            echo "DIST_SHA256=$(sha256sum dist/server.js | awk '{print $1}')"
+          } | tee ../artifacts/backend-pass-v50.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-pass-evidence-v50
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ env.PROJECT_ROOT }}/artifacts/backend-pass-v50.txt
+
+  android:
+    name: Android V50 APK + AAB
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract V50
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f saldo_cero_v50_build_evidence.zip
+          rm -rf v50
+          mkdir -p v50
+          unzip -q saldo_cero_v50_build_evidence.zip -d v50
+
+      - name: Locate project
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATUS_FILE="$(find v50 -type f -name 'V50_STATUS.md' -print -quit)"
+          test -n "$STATUS_FILE"
+          PROJECT_ROOT="$(dirname "$STATUS_FILE")"
+          test -d "$PROJECT_ROOT/android"
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+          echo "Project root: $PROJECT_ROOT"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Confirm Gradle version
+        working-directory: ${{ env.PROJECT_ROOT }}/android
+        run: gradle --version
+
+      - name: Android debug APK
+        working-directory: ${{ env.PROJECT_ROOT }}/android
+        run: gradle --no-daemon --stacktrace clean assembleDebug
+
+      - name: Android release AAB
+        working-directory: ${{ env.PROJECT_ROOT }}/android
+        run: gradle --no-daemon --stacktrace bundleRelease
+
+      - name: Verify and stage APK + AAB
+        working-directory: ${{ env.PROJECT_ROOT }}/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          APK="$(find app/build/outputs/apk -type f -name '*.apk' -print -quit 2>/dev/null || true)"
+          AAB="$(find app/build/outputs/bundle/release -type f -name '*.aab' -print -quit 2>/dev/null || true)"
+          test -n "$APK"
+          test -n "$AAB"
+          cp "$APK" artifacts/
+          cp "$AAB" artifacts/
+          {
+            echo "V50_ANDROID_BUILD=PASS"
+            echo "APK=$(basename "$APK")"
+            echo "AAB=$(basename "$AAB")"
+            echo "APK_SHA256=$(sha256sum "$APK" | awk '{print $1}')"
+            echo "AAB_SHA256=$(sha256sum "$AAB" | awk '{print $1}')"
+          } | tee artifacts/release-evidence-v50.txt
+          test -s artifacts/*.apk
+          test -s artifacts/*.aab
+
+      - name: Upload Android release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: saldo-cero-v50-android
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ env.PROJECT_ROOT }}/android/artifacts/
