@@ -75,5 +75,8 @@ jobs:
 
       - name: Locate project
         run: |
-          PROJECT_ROOT=$(find v48 -type f -name "V48_STATUS.md" -print -quit | xargs dirname)
-          test -n "$PROJECT
+          PROJECT_STATUS=$(find v48 -type f -name V48_STATUS.md -print -quit)
+          test -n "$PROJECT_STATUS"
+          PROJECT_ROOT=$(dirname "$PROJECT_STATUS")
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+          echo "Project root: $PROJECT_ROOT"
