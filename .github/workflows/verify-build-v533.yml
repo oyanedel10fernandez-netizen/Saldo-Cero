@@ -20,7 +20,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -f saldo_cero_v53_android_compile.zip
+          test -f saldo_cero_v53_android_release.zip
           rm -rf v53
           mkdir -p v53
           unzip -q saldo_cero_v53_android_compile.zip -d v53
