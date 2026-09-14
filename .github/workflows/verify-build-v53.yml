@@ -1,0 +1,100 @@
+name: V53 Verify Backend and Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend V53
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Extract V53
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f saldo_cero_v53_android_compile.zip
+          rm -rf v53
+          mkdir -p v53
+          unzip -q saldo_cero_v53_android_compile.zip -d v53
+
+      - name: Locate project
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT_ROOT="$(find v53 -type f -name 'V53_STATUS.md' -print -quit | xargs -r dirname)"
+
+          test -n "$PROJECT_ROOT"
+          test -d "$PROJECT_ROOT/backend"
+
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Backend install
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Backend build
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: |
+          npm run build
+
+      - name: Backend verification
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: |
+          npm run verify:v53
+
+      - name: Backend evidence
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f dist/server.js
+
+          mkdir -p ../artifacts
+
+          echo "BACKEND_V53=PASS" | tee ../artifacts/backend-pass-v53.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-pass-evidence-v53
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ env.PROJECT_ROOT }}/artifacts/backend-pass-v53.txt
+
+
+  android:
+    name: Android V53 APK + AAB
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Extract V53
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f saldo_cero_v53_android_compile.zip
+
+          rm -rf v53
+          mkdir -p v53
+
+          unzip -q saldo_cero_v53_android_compile.zip -d v53
+
+      - name: Locate project
+        shell: bash
+       
