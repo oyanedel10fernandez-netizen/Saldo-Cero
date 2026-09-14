@@ -34,7 +34,7 @@ jobs:
 
       - name: Backend install
         working-directory: ${{ env.PROJECT_ROOT }}/backend
-        run: npm ci
+        run: npm install --ignore-scripts
 
       - name: Backend build
         working-directory: ${{ env.PROJECT_ROOT }}/backend
