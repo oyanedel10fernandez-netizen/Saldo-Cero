@@ -1,0 +1,132 @@
+name: V54 Verify Backend and Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+jobs:
+
+  backend:
+    name: Backend V54
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Extract V54
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ZIP_FILE="saldo_cero_v54_base_estable.zip"
+
+          echo "Buscando: $ZIP_FILE"
+          test -f "$ZIP_FILE"
+
+          rm -rf v54
+          mkdir -p v54
+
+          unzip -q "$ZIP_FILE" -d v54
+
+          echo "V54 extraída correctamente."
+
+      - name: Locate project
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT_ROOT="$(find v54 -type f -name 'V54_STATUS.md' -print -quit | xargs -r dirname)"
+
+          echo "PROJECT_ROOT=$PROJECT_ROOT"
+
+          test -n "$PROJECT_ROOT"
+          test -d "$PROJECT_ROOT/backend"
+
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Backend install
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Backend build
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: |
+          npm run build
+
+      - name: Backend verification
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: |
+          npm run verify:v54
+
+      - name: Backend evidence
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f dist/server.js
+
+          mkdir -p ../artifacts
+
+          echo "BACKEND_V54=PASS" \
+            | tee ../artifacts/backend-pass-v54.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-pass-evidence-v54
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ env.PROJECT_ROOT }}/artifacts/backend-pass-v54.txt
+
+
+  android:
+    name: Android V54 APK + AAB
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Extract V54
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ZIP_FILE="saldo_cero_v54_base_estable.zip"
+
+          echo "Buscando: $ZIP_FILE"
+          test -f "$ZIP_FILE"
+
+          rm -rf v54
+          mkdir -p v54
+
+          unzip -q "$ZIP_FILE" -d v54
+
+          echo "V54 extraída correctamente."
+
+      - name: Locate project
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT_ROOT="$(find v54 -type f -name 'V54_STATUS.md' -print -quit | xargs -r dirname)"
+
+          echo "PROJECT_ROOT=$PROJECT_ROOT"
+
+          test -n "$PROJECT_ROOT"
+          test -d "$PROJECT_ROOT/android"
+
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java
