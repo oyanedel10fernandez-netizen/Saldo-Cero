@@ -1,0 +1,79 @@
+name: V48 Verify Backend and Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  backend:
+    name: Backend build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract V48
+        run: |
+          test -f saldo_cero_v48_build_evidence.zip
+          rm -rf v48
+          mkdir v48
+          unzip -q saldo_cero_v48_build_evidence.zip -d v48
+
+      - name: Locate project
+        run: |
+          PROJECT_ROOT=$(find v48 -type f -name "V48_STATUS.md" -print -quit | xargs dirname)
+          test -n "$PROJECT_ROOT"
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+          echo "Project root: $PROJECT_ROOT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Backend install
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Backend build
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm run build
+
+      - name: Backend verification
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm run verify:v48
+
+      - name: Backend evidence
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: |
+          test -f dist/server.js
+          mkdir -p ../artifacts
+          {
+            echo "BACKEND_BUILD=PASS"
+            echo "DIST=PASS"
+            echo "V48_VERIFICATION=PASS"
+          } | tee ../artifacts/backend-pass.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-pass-evidence-v48
+          path: ${{ env.PROJECT_ROOT }}/artifacts/backend-pass.txt
+
+  android:
+    name: Android debug + release AAB
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract V48
+        run: |
+          test -f saldo_cero_v48_build_evidence.zip
+          rm -rf v48
+          mkdir v48
+          unzip -q saldo_cero_v48_build_evidence.zip -d v48
+
+      - name: Locate project
+        run: |
+          PROJECT_ROOT=$(find v48 -type f -name "V48_STATUS.md" -print -quit | xargs dirname)
+          test -n "$PROJECT
