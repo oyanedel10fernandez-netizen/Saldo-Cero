@@ -1,0 +1,102 @@
+name: V46 Verify Backend and Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  backend:
+    name: Backend V46
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Locate V46 project
+        run: |
+          unzip -q saldo_cero_v46_build_evidence.zip -d v46
+          ROOT=$(dirname "$(find v46 -type f -name 'V46_STATUS.md' | head -1)")
+          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "Project root: $ROOT"
+
+      - name: Install backend
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Build backend
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm run build
+
+      - name: Static verification V46
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm run verify:v46
+
+      - name: Verify server build
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: test -f dist/server.js
+
+      - name: Upload backend evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-pass-evidence-v46
+          path: |
+            ${{ env.PROJECT_ROOT }}/backend/dist/server.js
+            ${{ env.PROJECT_ROOT }}/backend/V46_STATUS.md
+
+  android:
+    name: Android V46
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Locate V46 project
+        run: |
+          unzip -q saldo_cero_v46_build_evidence.zip -d v46
+          ROOT=$(dirname "$(find v46 -type f -name 'V46_STATUS.md' | head -1)")
+          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "Project root: $ROOT"
+
+      - name: Build debug APK
+        working-directory: ${{ env.PROJECT_ROOT }}/android
+        run: gradle --no-daemon clean assembleDebug
+
+      - name: Build release AAB
+        working-directory: ${{ env.PROJECT_ROOT }}/android
+        run: gradle --no-daemon bundleRelease
+
+      - name: Find AAB
+        run: |
+          AAB=$(find "${PROJECT_ROOT}/android" -type f -name "*.aab" | head -1)
+          test -n "$AAB"
+          echo "AAB=$AAB" >> "$GITHUB_ENV"
+          sha256sum "$AAB" | tee android-v46-aab.sha256
+
+      - name: Upload Android AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: saldo-cero-v46-aab
+          path: |
+            ${{ env.AAB }}
+            android-v46-aab.sha256
