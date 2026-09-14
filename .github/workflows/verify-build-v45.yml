@@ -1,0 +1,86 @@
+name: V45 Verify Backend and Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract V45
+        run: |
+          mkdir -p v45
+          unzip -q saldo_cero_v45_build_evidence.zip -d v45
+          echo "Contenido:"
+          find v45 -maxdepth 3 -type f | head -100
+
+      - name: Locate project
+        run: |
+          PROJECT_ROOT=$(find v45 -type f -name "V45_STATUS.md" -print -quit | xargs dirname)
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+          echo "Proyecto: $PROJECT_ROOT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Backend install
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm ci
+
+      - name: Backend build
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm run build
+
+      - name: Backend verification
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm run verify:v44
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Android debug build
+        working-directory: ${{ env.PROJECT_ROOT }}/android
+        run: gradle --no-daemon clean assembleDebug
+
+      - name: Android release AAB
+        working-directory: ${{ env.PROJECT_ROOT }}/android
+        run: gradle --no-daemon bundleRelease
+
+      - name: Verify AAB
+        working-directory: ${{ env.PROJECT_ROOT }}/android
+        run: |
+          AAB=$(find app/build/outputs/bundle -name "*.aab" -print -quit)
+          test -n "$AAB"
+          echo "AAB generado: $AAB"
+          sha256sum "$AAB"
+
+      - name: Upload AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: saldo-cero-v45-aab
+          path: ${{ env.PROJECT_ROOT }}/android/app/build/outputs/bundle/**/*.aab
+
+      - name: Upload backend evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: saldo-cero-v45-backend-evidence
+          path: |
+            ${{ env.PROJECT_ROOT }}/backend/dist/**
+            ${{ env.PROJECT_ROOT }}/V45_BUILD_EVIDENCE.md
