@@ -1,0 +1,140 @@
+name: V51 Verify Backend and Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend V51
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract V51
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f saldo_cero_v51_android_fix.zip
+          rm -rf v51
+          mkdir -p v51
+          unzip -q saldo_cero_v51_android_fix.zip -d v51
+
+      - name: Locate project
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT_ROOT="$(find v51 -type f -name 'V51_STATUS.md' -print -quit | xargs -r dirname)"
+          test -n "$PROJECT_ROOT"
+          test -d "$PROJECT_ROOT/backend"
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Backend install
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Backend build
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm run build
+
+      - name: Backend verification
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        run: npm run verify:v51
+
+      - name: Backend evidence
+        working-directory: ${{ env.PROJECT_ROOT }}/backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s dist/server.js
+          mkdir -p ../artifacts
+          {
+            echo "BACKEND_BUILD=PASS"
+            echo "BACKEND_VERIFICATION=PASS"
+            echo "DIST_SHA256=$(sha256sum dist/server.js | awk '{print $1}')"
+          } | tee ../artifacts/backend-pass-v51.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-pass-evidence-v51
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ env.PROJECT_ROOT }}/artifacts/backend-pass-v51.txt
+
+  android:
+    name: Android V51 APK + AAB
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract V51
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f saldo_cero_v51_android_fix.zip
+          rm -rf v51
+          mkdir -p v51
+          unzip -q saldo_cero_v51_android_fix.zip -d v51
+
+      - name: Locate project
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT_ROOT="$(find v51 -type f -name 'V51_STATUS.md' -print -quit | xargs -r dirname)"
+          test -n "$PROJECT_ROOT"
+          test -d "$PROJECT_ROOT/android"
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Android debug APK
+        working-directory: ${{ env.PROJECT_ROOT }}/android
+        run: gradle --no-daemon clean assembleDebug
+
+      - name: Android release AAB
+        working-directory: ${{ env.PROJECT_ROOT }}/android
+        run: gradle --no-daemon bundleRelease
+
+      - name: Verify APK + AAB
+        working-directory: ${{ env.PROJECT_ROOT }}/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf artifacts
+          mkdir -p artifacts
+          APK="$(find app/build/outputs -type f -name '*.apk' | head -1)"
+          AAB="$(find app/build/outputs -type f -name '*.aab' | head -1)"
+          test -n "$APK"
+          test -n "$AAB"
+          cp "$APK" artifacts/
+          cp "$AAB" artifacts/
+          {
+            echo "V51_ANDROID_BUILD=PASS"
+            echo "APK=$(basename "$APK")"
+            echo "AAB=$(basename "$AAB")"
+            echo "APK_SHA256=$(sha256sum "$APK" | awk '{print $1}')"
+            echo "AAB_SHA256=$(sha256sum "$AAB" | awk '{print $1}')"
+          } | tee artifacts/release-evidence.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: saldo-cero-v51-android
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ env.PROJECT_ROOT }}/android/artifacts/
